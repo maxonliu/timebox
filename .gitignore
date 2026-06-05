@@ -1,0 +1,34 @@
+# ─── macOS ──────────────────────────────────────
+.DS_Store
+*Icon?
+._*
+
+# ─── Compiled binaries ─────────────────────────
+TimeBoxNative
+TimeBoxNative.bak
+*.o
+*.dSYM/
+
+# ─── macOS app bundles ─────────────────────────
+TimeBox.app/
+TimeBoxDesktop.app/
+
+# ─── Swift / Xcode build artifacts ─────────────
+.build/
+Packages/
+DerivedData/
+xcuserdata/
+*.xcworkspace
+*.xcuserdata
+.swiftpm/
+
+# ─── User data / config ────────────────────────
+.env
+_vision_input.png
+
+# ─── Personal launcher shortcut ────────────────
+launcher.sh
+
+# ─── OS metadata ──────────────────────────────
+Thumbs.db
+Desktop.ini
