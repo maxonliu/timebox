@@ -12,8 +12,7 @@
 #define C_PROGRESS  [NSColor colorWithRed:0.85 green:0.78 blue:0.65 alpha:1]
 
 // ─── Daily note path — helper ────────────────────────────
-// Configurable via NOTE_DIR environment variable.
-// Default: /Users/lw/Documents/Notes/Wayne/Today/
+// Priority: NOTE_DIR env var > NSUserDefaults (config button) > ~/Documents/Notes/Today/
 static NSString *NotePath(void) {
     NSCalendar *cal = [NSCalendar currentCalendar];
     NSInteger y = [cal component:NSCalendarUnitYear fromDate:[NSDate date]];
@@ -24,7 +23,10 @@ static NSString *NotePath(void) {
     if (env && strlen(env) > 0) {
         dir = [NSString stringWithUTF8String:env];
     } else {
-        dir = @"/Users/lw/Documents/Notes/Wayne/Today/";
+        dir = [[NSUserDefaults standardUserDefaults] stringForKey:@"timebox_note_dir"];
+        if (!dir) {
+            dir = [@"~/Documents/Notes/Today/" stringByExpandingTildeInPath];
+        }
     }
     return [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%04ld-%02ld.md", (long)y, (long)m]];
 }
@@ -129,7 +131,7 @@ static NSString *NotePath(void) {
     [self addSubview:self.intentField];
 
     // ── Task input ──
-    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, 200, 34)];
+    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, 196, 34)];
     [self.taskField setPlaceholderString:@"要做什么？"];
     [self.taskField setFont:[NSFont systemFontOfSize:14]];
     [self.taskField setTextColor:C_TEXT];
@@ -140,8 +142,21 @@ static NSString *NotePath(void) {
     [self.taskField setDelegate:self];
     [self addSubview:self.taskField];
 
+    // ── Config button (set notes path) ──
+    NSButton *cfgBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-120, Y-208, 24, 36)];
+    [cfgBtn setBordered:NO];
+    [cfgBtn setTarget:self];
+    [cfgBtn setAction:@selector(configureNoteDir)];
+    cfgBtn.wantsLayer = YES;
+    cfgBtn.layer.backgroundColor = [NSColor colorWithWhite:0.82 alpha:0.3].CGColor;
+    cfgBtn.layer.cornerRadius = 8;
+    [cfgBtn setTitle:@"⚙️"];
+    [cfgBtn setFont:[NSFont systemFontOfSize:12]];
+    [cfgBtn setToolTip:@"设置笔记目录"];
+    [self addSubview:cfgBtn];
+
     // ── Todo button ──
-    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-116, Y-208, 36, 36)];
+    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-90, Y-208, 36, 36)];
     [self.todoBtn setBordered:NO];
     [self.todoBtn setTarget:self];
     [self.todoBtn setAction:@selector(toggleTodo)];
@@ -470,6 +485,24 @@ static NSString *NotePath(void) {
 }
 
 // ─── 📋 Todo ──────────────────────────────────────────────
+- (void)configureNoteDir {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    [panel setCanChooseFiles:NO];
+    [panel setCanChooseDirectories:YES];
+    [panel setCanCreateDirectories:YES];
+    [panel setMessage:@"选择 daily note 目录"];
+    [panel setDirectoryURL:[NSURL fileURLWithPath:
+                            [[NSUserDefaults standardUserDefaults] stringForKey:@"timebox_note_dir"] ?:
+                            [@"~/Documents/Notes/Today/" stringByExpandingTildeInPath]]];
+    [panel beginWithCompletionHandler:^(NSModalResponse result) {
+        if (result == NSModalResponseOK) {
+            NSString *path = panel.URL.path;
+            [[NSUserDefaults standardUserDefaults] setObject:path forKey:@"timebox_note_dir"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
+    }];
+}
+
 - (void)toggleTodo {
     self.todoOpen = !self.todoOpen;
     CGFloat W = self.bounds.size.width;

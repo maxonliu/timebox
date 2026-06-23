@@ -107,11 +107,11 @@ Entries are written under the `## M.D` section (e.g. `## 6.23`) in `HH:MM task` 
 
 ### Configuration
 
-| Variable   | Default                                     | Description                     |
-|-----------|---------------------------------------------|---------------------------------|
-| `NOTE_DIR` | `/Users/lw/Documents/Notes/Wayne/Today/` | Directory for daily note files  |
+| Variable   | Default                                    | Description                     |
+|-----------|--------------------------------------------|---------------------------------|
+| `NOTE_DIR` | `~/Documents/Notes/Today/` (configurable ⚙️) | Directory for daily note files  |
 
-Override via environment variable:
+Override via environment variable, or click the ⚙️ button in the app to set via file picker:
 
 ```bash
 export NOTE_DIR=~/Documents/Notes/Journal/
