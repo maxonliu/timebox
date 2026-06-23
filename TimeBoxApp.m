@@ -13,7 +13,7 @@
 
 // ─── Daily note path — helper ────────────────────────────
 // Configurable via NOTE_DIR environment variable.
-// Default: ~/Documents/Notes/Today/
+// Default: /Users/lw/Documents/Notes/Wayne/Today/
 static NSString *NotePath(void) {
     NSCalendar *cal = [NSCalendar currentCalendar];
     NSInteger y = [cal component:NSCalendarUnitYear fromDate:[NSDate date]];
@@ -24,7 +24,7 @@ static NSString *NotePath(void) {
     if (env && strlen(env) > 0) {
         dir = [NSString stringWithUTF8String:env];
     } else {
-        dir = [@"~/Documents/Notes/Today/" stringByExpandingTildeInPath];
+        dir = @"/Users/lw/Documents/Notes/Wayne/Today/";
     }
     return [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%04ld-%02ld.md", (long)y, (long)m]];
 }
@@ -37,7 +37,7 @@ static NSString *NotePath(void) {
 @implementation LogEntry
 @end
 
-@interface TimeBoxView : NSView <NSTextFieldDelegate, NSTableViewDelegate, NSTableViewDataSource>
+@interface TimeBoxView : NSView <NSTextFieldDelegate, NSTableViewDelegate, NSTableViewDataSource, NSTextViewDelegate>
 @property (strong) NSTextField *timerField;
 @property (strong) NSTextField *blockField;
 @property (strong) NSTextField *intentField;
@@ -51,6 +51,11 @@ static NSString *NotePath(void) {
 @property int round;
 @property BOOL running;
 @property NSTimer *tickTimer;
+// 📋 Todo
+@property (strong) NSButton *todoBtn;
+@property BOOL todoOpen;
+@property (strong) NSView *todoPanel;
+@property (strong) NSTextView *todoTextView;
 @end
 
 @implementation TimeBoxView
@@ -124,7 +129,7 @@ static NSString *NotePath(void) {
     [self addSubview:self.intentField];
 
     // ── Task input ──
-    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, W-90, 34)];
+    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, 200, 34)];
     [self.taskField setPlaceholderString:@"要做什么？"];
     [self.taskField setFont:[NSFont systemFontOfSize:14]];
     [self.taskField setTextColor:C_TEXT];
@@ -134,6 +139,18 @@ static NSString *NotePath(void) {
     [self.taskField setBezelStyle:NSTextFieldSquareBezel];
     [self.taskField setDelegate:self];
     [self addSubview:self.taskField];
+
+    // ── Todo button ──
+    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-116, Y-208, 36, 36)];
+    [self.todoBtn setBordered:NO];
+    [self.todoBtn setTarget:self];
+    [self.todoBtn setAction:@selector(toggleTodo)];
+    self.todoBtn.wantsLayer = YES;
+    self.todoBtn.layer.backgroundColor = [NSColor colorWithWhite:0.82 alpha:0.5].CGColor;
+    self.todoBtn.layer.cornerRadius = 8;
+    [self.todoBtn setTitle:@"📋"];
+    [self.todoBtn setFont:[NSFont systemFontOfSize:16]];
+    [self addSubview:self.todoBtn];
 
     // ── Punch button ──
     self.punchBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-66, Y-208, 50, 36)];
@@ -450,6 +467,93 @@ static NSString *NotePath(void) {
     [label setEditable:NO];
     [label setBackgroundColor:[NSColor clearColor]];
     return label;
+}
+
+// ─── 📋 Todo ──────────────────────────────────────────────
+- (void)toggleTodo {
+    self.todoOpen = !self.todoOpen;
+    CGFloat W = self.bounds.size.width;
+    if (self.todoOpen) {
+        if (!self.todoPanel) {
+            self.todoPanel = [[NSView alloc] initWithFrame:NSMakeRect(16, 28, W-32, 128)];
+            self.todoPanel.wantsLayer = YES;
+            self.todoPanel.layer.backgroundColor = C_CARD.CGColor;
+            self.todoPanel.layer.cornerRadius = 6;
+            self.todoPanel.layer.borderWidth = 0.5;
+            self.todoPanel.layer.borderColor = C_BORDER.CGColor;
+            [self addSubview:self.todoPanel];
+
+            NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(4, 4, W-40, 120)];
+            self.todoTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, W-44, 120)];
+            [self.todoTextView setFont:[NSFont systemFontOfSize:12]];
+            [self.todoTextView setTextColor:C_TEXT];
+            [self.todoTextView setBackgroundColor:[NSColor clearColor]];
+            [self.todoTextView setDrawsBackground:NO];
+            [self.todoTextView setDelegate:self];
+            [self.todoTextView setRichText:NO];
+            [sv setDocumentView:self.todoTextView];
+            [sv setHasVerticalScroller:YES];
+            [sv setBorderType:NSNoBorder];
+            [sv setDrawsBackground:NO];
+            [self.todoPanel addSubview:sv];
+
+            NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:@"timebox_todo_text"];
+            if (saved) [self.todoTextView setString:saved];
+        }
+        self.todoPanel.hidden = NO;
+        [self.todoBtn setTitle:@"✕"];
+        self.todoBtn.layer.backgroundColor = C_WARN.CGColor;
+    } else {
+        if (self.todoTextView) {
+            NSString *text = [self.todoTextView.string copy];
+            [[NSUserDefaults standardUserDefaults] setObject:text forKey:@"timebox_todo_text"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
+        self.todoPanel.hidden = YES;
+        [self.todoBtn setTitle:@"📋"];
+        NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:@"timebox_todo_text"];
+        self.todoBtn.layer.backgroundColor = (saved.length > 0) ? C_ACCENT.CGColor : [NSColor colorWithWhite:0.82 alpha:0.5].CGColor;
+    }
+}
+
+- (BOOL)textView:(NSTextView *)tv doCommandBySelector:(SEL)selector {
+    if (tv == self.todoTextView && selector == @selector(insertNewlineIgnoringFieldEditor:)) {
+        [self useTodoFromTextView];
+        return YES;
+    }
+    return NO;
+}
+
+- (void)useTodoFromTextView {
+    if (!self.todoTextView) return;
+    NSString *text = self.todoTextView.string;
+    NSRange sel = [self.todoTextView selectedRange];
+    NSMutableArray *lines = [[text componentsSeparatedByString:@"\n"] mutableCopy];
+    NSUInteger pos = 0;
+    NSInteger targetLine = -1;
+    for (NSInteger i = 0; i < (NSInteger)lines.count; i++) {
+        NSString *line = lines[i];
+        NSUInteger lineLen = line.length + 1;
+        if (sel.location >= pos && sel.location < pos + lineLen) {
+            NSString *trimmed = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            if (trimmed.length > 0) {
+                self.taskField.stringValue = trimmed;
+                [self fieldChanged];
+                targetLine = i;
+            }
+            break;
+        }
+        pos += lineLen;
+    }
+    if (targetLine >= 0) {
+        [lines removeObjectAtIndex:targetLine];
+        if (targetLine < (NSInteger)lines.count && [lines[targetLine] isEqualToString:@""])
+            [lines removeObjectAtIndex:targetLine];
+        NSString *newText = [lines componentsJoinedByString:@"\n"];
+        self.todoTextView.string = newText;
+        [[NSUserDefaults standardUserDefaults] setObject:newText forKey:@"timebox_todo_text"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
 }
 
 @end
