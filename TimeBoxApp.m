@@ -131,7 +131,7 @@ static NSString *NotePath(void) {
     [self addSubview:self.intentField];
 
     // ── Task input ──
-    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, 196, 34)];
+    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, 200, 34)];
     [self.taskField setPlaceholderString:@"要做什么？"];
     [self.taskField setFont:[NSFont systemFontOfSize:14]];
     [self.taskField setTextColor:C_TEXT];
@@ -142,21 +142,8 @@ static NSString *NotePath(void) {
     [self.taskField setDelegate:self];
     [self addSubview:self.taskField];
 
-    // ── Config button (set notes path) ──
-    NSButton *cfgBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-120, Y-208, 24, 36)];
-    [cfgBtn setBordered:NO];
-    [cfgBtn setTarget:self];
-    [cfgBtn setAction:@selector(configureNoteDir)];
-    cfgBtn.wantsLayer = YES;
-    cfgBtn.layer.backgroundColor = [NSColor colorWithWhite:0.82 alpha:0.3].CGColor;
-    cfgBtn.layer.cornerRadius = 8;
-    [cfgBtn setTitle:@"⚙️"];
-    [cfgBtn setFont:[NSFont systemFontOfSize:12]];
-    [cfgBtn setToolTip:@"设置笔记目录"];
-    [self addSubview:cfgBtn];
-
     // ── Todo button ──
-    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-90, Y-208, 36, 36)];
+    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-116, Y-208, 36, 36)];
     [self.todoBtn setBordered:NO];
     [self.todoBtn setTarget:self];
     [self.todoBtn setAction:@selector(toggleTodo)];
@@ -213,6 +200,16 @@ static NSString *NotePath(void) {
     [reset setTarget:self];
     [reset setAction:@selector(resetAll)];
     [self addSubview:reset];
+
+    // ── Config ⚙️ (unobtrusive) ──
+    NSButton *cfg = [[NSButton alloc] initWithFrame:NSMakeRect(268, Y-250, 24, 28)];
+    [cfg setBordered:NO];
+    [cfg setTarget:self];
+    [cfg setAction:@selector(configureNoteDir)];
+    [cfg setTitle:@"⚙️"];
+    [cfg setFont:[NSFont systemFontOfSize:10]];
+    [cfg setToolTip:@"设置笔记目录"];
+    [self addSubview:cfg];
 
     // ── Log table ──
     NSTableColumn *col = [[NSTableColumn alloc] initWithIdentifier:@"c"];
