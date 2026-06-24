@@ -594,7 +594,48 @@ static NSString *NotePath(void) {
 @end
 
 @implementation AppDelegate
+- (void)installApplicationMenu {
+    NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
+
+    NSMenuItem *appMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:appMenuItem];
+    NSMenu *appMenu = [[NSMenu alloc] initWithTitle:@"TimeBox"];
+    [appMenu addItemWithTitle:@"Quit TimeBox" action:@selector(terminate:) keyEquivalent:@"q"];
+    [appMenuItem setSubmenu:appMenu];
+
+    NSMenuItem *editMenuItem = [[NSMenuItem alloc] initWithTitle:@"" action:nil keyEquivalent:@""];
+    [mainMenu addItem:editMenuItem];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+
+    NSMenuItem *cutItem = [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [cutItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [editMenu addItem:cutItem];
+    NSMenuItem *copyItem = [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [copyItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [editMenu addItem:copyItem];
+    NSMenuItem *pasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [pasteItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand];
+    [editMenu addItem:pasteItem];
+
+    [editMenu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *ctrlCutItem = [[NSMenuItem alloc] initWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [ctrlCutItem setKeyEquivalentModifierMask:NSEventModifierFlagControl];
+    [editMenu addItem:ctrlCutItem];
+    NSMenuItem *ctrlCopyItem = [[NSMenuItem alloc] initWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [ctrlCopyItem setKeyEquivalentModifierMask:NSEventModifierFlagControl];
+    [editMenu addItem:ctrlCopyItem];
+    NSMenuItem *ctrlPasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [ctrlPasteItem setKeyEquivalentModifierMask:NSEventModifierFlagControl];
+    [editMenu addItem:ctrlPasteItem];
+
+    [editMenuItem setSubmenu:editMenu];
+    [NSApp setMainMenu:mainMenu];
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
+    [self installApplicationMenu];
+
     NSScreen *screen = [NSScreen mainScreen];
     CGFloat sw = screen.visibleFrame.size.width;
     CGFloat sh = screen.visibleFrame.size.height;
