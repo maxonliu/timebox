@@ -14,6 +14,9 @@ A minimalist time-boxing timer for macOS. Stay focused, one 10-minute block at a
 - **Native macOS app** — Objective-C. Lightweight, zero Electron overhead.
 - **HTML/Web version** — Runs in browser or WKWebView. Same timer, same flow.
 - **Swift version** — Alternative implementation using Swift + WKWebView.
+- **🔍 Window scaling** — Continuously scale the window from 75% to 125% in 5% steps via the ⚙️ settings menu. All UI elements (timer, buttons, fonts, log table, todo panel) scale proportionally with adaptive layout — no overlapping. Scale preference is persisted across sessions.
+- **⚡ Flash reminders** — At 5:00 and 1:00 remaining, the entire window gently pulses yellow twice — a subtle, non-intrusive nudge that time is running short.
+- **🎨 Transparent titlebar** — Clean, borderless titlebar with the "TimeBox" title perfectly centered. Traffic light buttons and title scale with the window.
 
 ## Screenshot
 
@@ -27,7 +30,7 @@ A minimalist time-boxing timer for macOS. Stay focused, one 10-minute block at a
 │  ┌─────────────────┐ [📋] [✓]  │  ← 📋 toggles todo panel
 │  │ 要做什么？        │          │
 │  └─────────────────┘          │
-│  [⏸ 暂停] [⏭ 跳过] [⟳ 重置]    │
+│  [⏸ 暂停] [⏭ 跳过] [⟳ 重置] ⚙️│  ← ⚙️ opens settings menu
 │                                  │
 │  │📋 代办 (3)                   │  ← expandable todo panel
 │  │· 写周报                      │
@@ -111,12 +114,23 @@ Entries are written under the `## M.D` section (e.g. `## 6.23`) in `HH:MM task` 
 |-----------|--------------------------------------------|---------------------------------|
 | `NOTE_DIR` | `~/Documents/Notes/Today/` (configurable ⚙️) | Directory for daily note files  |
 
-Override via environment variable, or click the ⚙️ button in the app to set via file picker:
+Override via environment variable, or click the ⚙️ button in the app to open the settings menu, then select "设置笔记目录…":
 
 ```bash
 export NOTE_DIR=~/Documents/Notes/Journal/
 ./TimeBoxNative
 ```
+
+## ⚙️ Settings Menu
+
+Click the ⚙️ button next to the control buttons to open a compact popup menu:
+
+- **缩小一档** — Scale window down 5% (min 75%)
+- **恢复正常** — Reset to 100%
+- **放大一档** — Scale window up 5% (max 125%)
+- **设置笔记目录…** — Pick the daily note directory via file picker
+
+The scale is applied immediately with smooth animation and all UI elements adapt proportionally. Your preference is saved and restored on next launch.
 
 ## 📋 Todo Panel
 
