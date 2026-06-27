@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Compile TimeBox
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile (arm64)
+        run: |
+          clang -fobjc-arc -framework Cocoa -o TimeBoxNative TimeBoxApp.m
+          file TimeBoxNative
+
+      - name: Verify binary
+        run: |
+          test -x TimeBoxNative && echo "✅ Build successful"

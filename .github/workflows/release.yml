@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Package & Upload
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile
+        run: |
+          clang -fobjc-arc -framework Cocoa -o TimeBoxNative TimeBoxApp.m
+
+      - name: Package .app bundle
+        run: |
+          APP_DIR="TimeBox.app"
+          rm -rf "$APP_DIR"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+
+          cp TimeBoxNative "$APP_DIR/Contents/MacOS/TimeBox"
+          chmod +x "$APP_DIR/Contents/MacOS/TimeBox"
+
+          cat > "$APP_DIR/Contents/Info.plist" <<- PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>CFBundleExecutable</key><string>TimeBox</string>
+          <key>CFBundleIdentifier</key><string>com.lw.timebox</string>
+          <key>CFBundleName</key><string>TimeBox</string>
+          <key>CFBundleVersion</key><string>${GITHUB_REF_NAME#v}</string>
+          <key>CFBundleShortVersionString</key><string>${GITHUB_REF_NAME#v}</string>
+          <key>CFBundlePackageType</key><string>APPL</string>
+          <key>LSMinimumSystemVersion</key><string>12.0</string>
+          <key>NSHighResolutionCapable</key><true/>
+          <key>LSUIElement</key><true/>
+          </dict></plist>
+          PLIST
+
+          zip -r "TimeBox-${GITHUB_REF_NAME}-macOS.zip" TimeBox.app
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TimeBox-*.zip
+          generate_release_notes: true
