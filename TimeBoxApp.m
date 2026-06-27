@@ -10,6 +10,52 @@
 #define C_CARD      [NSColor whiteColor]
 #define C_BORDER    [NSColor colorWithRed:0.80 green:0.76 blue:0.70 alpha:1]
 #define C_PROGRESS  [NSColor colorWithRed:0.85 green:0.78 blue:0.65 alpha:1]
+#define BASE_W      340.0
+#define BASE_H      380.0
+#define SCALE_MIN   0.75
+#define SCALE_MAX   1.25
+#define SCALE_STEP  0.05
+
+static CGFloat TimeBoxScale(void) {
+    CGFloat scale = [[NSUserDefaults standardUserDefaults] doubleForKey:@"timebox_window_scale"];
+    if (scale < SCALE_MIN || scale > SCALE_MAX) scale = 1.0;
+    return scale;
+}
+
+static void ApplyTitlebarScale(NSWindow *window, CGFloat scale) {
+    NSButton *close = [window standardWindowButton:NSWindowCloseButton];
+    NSButton *mini = [window standardWindowButton:NSWindowMiniaturizeButton];
+    NSButton *zoom = [window standardWindowButton:NSWindowZoomButton];
+    if (!close || !mini || !zoom) return;
+
+    NSView *titlebar = close.superview;
+    CGFloat size = 14.0 * scale;
+    CGFloat y = MAX(2.0, close.frame.origin.y + (close.frame.size.height - size) / 2.0 - 3.0 * scale);
+    close.frame = NSMakeRect(18.0 * scale, y, size, size);
+    mini.frame = NSMakeRect(48.0 * scale, y, size, size);
+    zoom.frame = NSMakeRect(78.0 * scale, y, size, size);
+
+    NSTextField *title = [titlebar viewWithTag:9001];
+    if (!title) {
+        title = [[NSTextField alloc] initWithFrame:NSZeroRect];
+        title.tag = 9001;
+        title.stringValue = @"TimeBox";
+        title.bezeled = NO;
+        title.editable = NO;
+        title.selectable = NO;
+        title.drawsBackground = NO;
+        title.textColor = [NSColor colorWithRed:0.33 green:0.32 blue:0.32 alpha:1];
+        title.alignment = NSTextAlignmentCenter;
+        [titlebar addSubview:title];
+    }
+    title.font = [NSFont systemFontOfSize:15.0 * scale weight:NSFontWeightBold];
+    CGFloat titleW = MIN(150.0 * scale, MAX(90.0 * scale, titlebar.bounds.size.width - 180.0 * scale));
+    CGFloat titleH = 24.0 * scale;
+    CGFloat titleX = (titlebar.bounds.size.width - titleW) / 2.0;
+    CGFloat titleY = y + (size - titleH) / 2.0;
+    title.frame = NSMakeRect(titleX, titleY, titleW, titleH);
+    window.titleVisibility = NSWindowTitleHidden;
+}
 
 // ─── Daily note path — helper ────────────────────────────
 // Priority: NOTE_DIR env var > NSUserDefaults (config button) > ~/Documents/Notes/Today/
@@ -58,6 +104,9 @@ static NSString *NotePath(void) {
 @property BOOL todoOpen;
 @property (strong) NSView *todoPanel;
 @property (strong) NSTextView *todoTextView;
+@property (strong) NSView *flashView;
+@property BOOL fiveMinuteAlerted;
+@property BOOL oneMinuteAlerted;
 @end
 
 @implementation TimeBoxView
@@ -92,13 +141,24 @@ static NSString *NotePath(void) {
     return [NSString stringWithFormat:@"## %ld.%ld", (long)month, (long)day];
 }
 
+- (CGFloat)layoutScale {
+    CGFloat sx = self.bounds.size.width / BASE_W;
+    CGFloat sy = self.bounds.size.height / BASE_H;
+    CGFloat scale = MIN(sx, sy);
+    return MAX(SCALE_MIN, MIN(SCALE_MAX, scale));
+}
+
+- (CGFloat)L:(CGFloat)value {
+    return value * [self layoutScale];
+}
+
 - (void)buildUI {
     CGFloat W = self.bounds.size.width;
     CGFloat Y = self.bounds.size.height;
 
     // ── Timer display ──
-    self.timerField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, Y-90, W, 80)];
-    [self.timerField setFont:[NSFont monospacedDigitSystemFontOfSize:72 weight:NSFontWeightThin]];
+    self.timerField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, Y-[self L:104], W, [self L:92])];
+    [self.timerField setFont:[NSFont monospacedDigitSystemFontOfSize:[self L:72] weight:NSFontWeightThin]];
     [self.timerField setTextColor:C_ACCENT];
     [self.timerField setAlignment:NSTextAlignmentCenter];
     [self.timerField setStringValue:@"10:00"];
@@ -108,8 +168,8 @@ static NSString *NotePath(void) {
     [self addSubview:self.timerField];
 
     // ── Block info ──
-    self.blockField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, Y-115, W, 22)];
-    [self.blockField setFont:[NSFont systemFontOfSize:12 weight:NSFontWeightMedium]];
+    self.blockField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, Y-[self L:128], W, [self L:24])];
+    [self.blockField setFont:[NSFont systemFontOfSize:[self L:12] weight:NSFontWeightMedium]];
     [self.blockField setTextColor:C_DIM];
     [self.blockField setAlignment:NSTextAlignmentCenter];
     [self.blockField setStringValue:@"—"];
@@ -120,8 +180,8 @@ static NSString *NotePath(void) {
     [self updateBlockText];
 
     // ── Intention ──
-    self.intentField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-168, W-32, 22)];
-    [self.intentField setFont:[NSFont systemFontOfSize:13 weight:NSFontWeightMedium]];
+    self.intentField = [[NSTextField alloc] initWithFrame:NSMakeRect([self L:16], Y-[self L:178], W-[self L:32], [self L:24])];
+    [self.intentField setFont:[NSFont systemFontOfSize:[self L:13] weight:NSFontWeightMedium]];
     [self.intentField setTextColor:C_DIM];
     [self.intentField setStringValue:@"✏️ 写下这个10分钟的任务"];
     [self.intentField setAlignment:NSTextAlignmentCenter];
@@ -131,9 +191,9 @@ static NSString *NotePath(void) {
     [self addSubview:self.intentField];
 
     // ── Task input ──
-    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect(16, Y-206, 200, 34)];
+    self.taskField = [[NSTextField alloc] initWithFrame:NSMakeRect([self L:16], Y-[self L:214], [self L:200], [self L:34])];
     [self.taskField setPlaceholderString:@"要做什么？"];
-    [self.taskField setFont:[NSFont systemFontOfSize:14]];
+    [self.taskField setFont:[NSFont systemFontOfSize:[self L:14]]];
     [self.taskField setTextColor:C_TEXT];
     [self.taskField setBackgroundColor:C_CARD];
     [self.taskField setBezeled:YES];
@@ -143,25 +203,25 @@ static NSString *NotePath(void) {
     [self addSubview:self.taskField];
 
     // ── Todo button ──
-    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-116, Y-208, 36, 36)];
+    self.todoBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-[self L:116], Y-[self L:216], [self L:36], [self L:36])];
     [self.todoBtn setBordered:NO];
     [self.todoBtn setTarget:self];
     [self.todoBtn setAction:@selector(toggleTodo)];
     self.todoBtn.wantsLayer = YES;
     self.todoBtn.layer.backgroundColor = [NSColor colorWithWhite:0.82 alpha:0.5].CGColor;
-    self.todoBtn.layer.cornerRadius = 8;
+    self.todoBtn.layer.cornerRadius = [self L:8];
     [self.todoBtn setTitle:@"📋"];
-    [self.todoBtn setFont:[NSFont systemFontOfSize:16]];
+    [self.todoBtn setFont:[NSFont systemFontOfSize:[self L:16]]];
     [self addSubview:self.todoBtn];
 
     // ── Punch button ──
-    self.punchBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-66, Y-208, 50, 36)];
+    self.punchBtn = [[NSButton alloc] initWithFrame:NSMakeRect(W-[self L:66], Y-[self L:216], [self L:50], [self L:36])];
     [self.punchBtn setBordered:NO];
     [self.punchBtn setTarget:self];
     [self.punchBtn setAction:@selector(punchIn)];
     self.punchBtn.wantsLayer = YES;
     self.punchBtn.layer.backgroundColor = C_GREEN.CGColor;
-    self.punchBtn.layer.cornerRadius = 8;
+    self.punchBtn.layer.cornerRadius = [self L:8];
 
     // Use system checkmark icon (SF Symbols, macOS 11+)
     if (@available(macOS 11.0, *)) {
@@ -172,68 +232,75 @@ static NSString *NotePath(void) {
         [self.punchBtn setContentTintColor:[NSColor whiteColor]];
     } else {
         [self.punchBtn setTitle:@"✓"];
-        [self.punchBtn setFont:[NSFont systemFontOfSize:20 weight:NSFontWeightBold]];
+        [self.punchBtn setFont:[NSFont systemFontOfSize:[self L:20] weight:NSFontWeightBold]];
     }
     [self addSubview:self.punchBtn];
 
     // ── Control buttons ──
-    self.pauseBtn = [[NSButton alloc] initWithFrame:NSMakeRect(16, Y-250, 90, 28)];
+    self.pauseBtn = [[NSButton alloc] initWithFrame:NSMakeRect([self L:16], Y-[self L:254], [self L:90], [self L:28])];
     [self.pauseBtn setTitle:@"⏸ 暂停"];
-    [self.pauseBtn setFont:[NSFont systemFontOfSize:12]];
+    [self.pauseBtn setFont:[NSFont systemFontOfSize:[self L:12]]];
     [self.pauseBtn setBezelStyle:NSBezelStyleTexturedRounded];
     [self.pauseBtn setTarget:self];
     [self.pauseBtn setAction:@selector(togglePause)];
     [self addSubview:self.pauseBtn];
 
-    NSButton *skip = [[NSButton alloc] initWithFrame:NSMakeRect(112, Y-250, 72, 28)];
+    NSButton *skip = [[NSButton alloc] initWithFrame:NSMakeRect([self L:112], Y-[self L:254], [self L:72], [self L:28])];
     [skip setTitle:@"⏭ 跳过"];
-    [skip setFont:[NSFont systemFontOfSize:12]];
+    [skip setFont:[NSFont systemFontOfSize:[self L:12]]];
     [skip setBezelStyle:NSBezelStyleTexturedRounded];
     [skip setTarget:self];
     [skip setAction:@selector(skipBlock)];
     [self addSubview:skip];
 
-    NSButton *reset = [[NSButton alloc] initWithFrame:NSMakeRect(190, Y-250, 72, 28)];
+    NSButton *reset = [[NSButton alloc] initWithFrame:NSMakeRect([self L:190], Y-[self L:254], [self L:72], [self L:28])];
     [reset setTitle:@"⟳ 重置"];
-    [reset setFont:[NSFont systemFontOfSize:12]];
+    [reset setFont:[NSFont systemFontOfSize:[self L:12]]];
     [reset setBezelStyle:NSBezelStyleTexturedRounded];
     [reset setTarget:self];
     [reset setAction:@selector(resetAll)];
     [self addSubview:reset];
 
     // ── Config ⚙️ (unobtrusive) ──
-    NSButton *cfg = [[NSButton alloc] initWithFrame:NSMakeRect(268, Y-250, 24, 28)];
+    NSButton *cfg = [[NSButton alloc] initWithFrame:NSMakeRect([self L:268], Y-[self L:254], [self L:24], [self L:28])];
     [cfg setBordered:NO];
     [cfg setTarget:self];
-    [cfg setAction:@selector(configureNoteDir)];
+    [cfg setAction:@selector(showSettings:)];
     [cfg setTitle:@"⚙️"];
-    [cfg setFont:[NSFont systemFontOfSize:10]];
-    [cfg setToolTip:@"设置笔记目录"];
+    [cfg setFont:[NSFont systemFontOfSize:[self L:10]]];
+    [cfg setToolTip:@"设置"];
     [self addSubview:cfg];
 
     // ── Log table ──
     NSTableColumn *col = [[NSTableColumn alloc] initWithIdentifier:@"c"];
-    col.width = W - 36;
-    col.minWidth = W - 36;
+    col.width = W - [self L:36];
+    col.minWidth = W - [self L:36];
 
-    NSTableView *tv = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, W-36, 100)];
+    NSTableView *tv = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, W-[self L:36], [self L:100])];
     [tv addTableColumn:col];
     [tv setHeaderView:nil];
     [tv setBackgroundColor:[NSColor clearColor]];
     [tv setSelectionHighlightStyle:NSTableViewSelectionHighlightStyleNone];
-    [tv setRowHeight:24];
-    [tv setIntercellSpacing:NSMakeSize(0, 2)];
+    [tv setRowHeight:[self L:24]];
+    [tv setIntercellSpacing:NSMakeSize(0, [self L:2])];
     tv.delegate = self;
     tv.dataSource = self;
     self.logTable = tv;
 
-    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(16, 4, W-32, 130)];
+    NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect([self L:16], [self L:4], W-[self L:32], [self L:130])];
     [sv setDocumentView:tv];
     [sv setHasVerticalScroller:YES];
     [sv setBorderType:NSNoBorder];
     [sv setDrawsBackground:NO];
     [sv setBackgroundColor:[NSColor clearColor]];
     [self addSubview:sv];
+
+    self.flashView = [[NSView alloc] initWithFrame:self.bounds];
+    self.flashView.wantsLayer = YES;
+    self.flashView.layer.backgroundColor = [NSColor colorWithRed:1.0 green:0.78 blue:0.22 alpha:1.0].CGColor;
+    self.flashView.alphaValue = 0.0;
+    self.flashView.hidden = YES;
+    [self addSubview:self.flashView positioned:NSWindowAbove relativeTo:nil];
 }
 
 - (void)updateBlockText {
@@ -247,12 +314,50 @@ static NSString *NotePath(void) {
 - (void)tick {
     if (!self.running) return;
     self.remaining--;
+    if (self.remaining == 300 && !self.fiveMinuteAlerted) {
+        self.fiveMinuteAlerted = YES;
+        [self flashReminder];
+    } else if (self.remaining == 60 && !self.oneMinuteAlerted) {
+        self.oneMinuteAlerted = YES;
+        [self flashReminder];
+    }
     if (self.remaining <= 0) {
         self.remaining = 0;
         [self autoPunch];
         [self nextBlock];
     }
     [self updateDisplay];
+}
+
+- (void)flashReminder {
+    if (!self.flashView) return;
+    self.flashView.frame = self.bounds;
+    [self.flashView removeFromSuperview];
+    [self addSubview:self.flashView positioned:NSWindowAbove relativeTo:nil];
+    self.flashView.hidden = NO;
+    self.flashView.alphaValue = 0.0;
+
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.16;
+        self.flashView.animator.alphaValue = 0.22;
+    } completionHandler:^{
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.18;
+            self.flashView.animator.alphaValue = 0.0;
+        } completionHandler:^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.16;
+                self.flashView.animator.alphaValue = 0.18;
+            } completionHandler:^{
+                [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                    context.duration = 0.24;
+                    self.flashView.animator.alphaValue = 0.0;
+                } completionHandler:^{
+                    self.flashView.hidden = YES;
+                }];
+            }];
+        }];
+    }];
 }
 
 - (void)updateDisplay {
@@ -270,16 +375,16 @@ static NSString *NotePath(void) {
     CGFloat Y = self.bounds.size.height;
 
     // Progress bar background
-    NSRect bg = NSMakeRect(16, Y-126, W-32, 4);
+    NSRect bg = NSMakeRect([self L:16], Y-[self L:142], W-[self L:32], [self L:4]);
     [C_PROGRESS setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:bg xRadius:2 yRadius:2] fill];
+    [[NSBezierPath bezierPathWithRoundedRect:bg xRadius:[self L:2] yRadius:[self L:2]] fill];
 
     // Progress fill
     double pct = (600.0 - self.remaining) / 600.0;
     if (pct > 0) {
-        NSRect fg = NSMakeRect(16, Y-126, (W-32)*pct, 4);
+        NSRect fg = NSMakeRect([self L:16], Y-[self L:142], (W-[self L:32])*pct, [self L:4]);
         [(self.remaining < 180 ? C_WARN : C_ACCENT) setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:fg xRadius:2 yRadius:2] fill];
+        [[NSBezierPath bezierPathWithRoundedRect:fg xRadius:[self L:2] yRadius:[self L:2]] fill];
     }
 }
 
@@ -408,6 +513,8 @@ static NSString *NotePath(void) {
     self.blockIdx = (self.blockIdx + 1) % (24*6);
     self.remaining = 600;
     self.running = YES;
+    self.fiveMinuteAlerted = NO;
+    self.oneMinuteAlerted = NO;
     [self.pauseBtn setTitle:@"⏸ 暂停"];
     [self updateBlockText];
     [self updateDisplay];
@@ -425,6 +532,8 @@ static NSString *NotePath(void) {
     self.remaining = 600;
     self.running = YES;
     self.round = 0;
+    self.fiveMinuteAlerted = NO;
+    self.oneMinuteAlerted = NO;
     [self.taskField setStringValue:@""];
     [self.pauseBtn setTitle:@"⏸ 暂停"];
     [self.intentField setStringValue:@"✏️ 写下这个10分钟的任务"];
@@ -471,9 +580,9 @@ static NSString *NotePath(void) {
 - (NSView *)tableView:(NSTableView *)tv viewForTableColumn:(NSTableColumn *)col row:(NSInteger)row {
     if (row >= (NSInteger)self.logs.count) return nil;
     LogEntry *e = self.logs[row];
-    NSTextField *label = [[NSTextField alloc] initWithFrame:NSMakeRect(6, 1, tv.bounds.size.width-12, 22)];
+    NSTextField *label = [[NSTextField alloc] initWithFrame:NSMakeRect([self L:6], [self L:1], tv.bounds.size.width-[self L:12], [self L:22])];
     [label setStringValue:[NSString stringWithFormat:@"🎯 %@  · %@", e.task, e.time]];
-    [label setFont:[NSFont systemFontOfSize:12]];
+    [label setFont:[NSFont systemFontOfSize:[self L:12]]];
     [label setTextColor:C_TEXT];
     [label setBezeled:NO];
     [label setEditable:NO];
@@ -482,6 +591,105 @@ static NSString *NotePath(void) {
 }
 
 // ─── 📋 Todo ──────────────────────────────────────────────
+- (void)applyWindowScale:(CGFloat)scale {
+    scale = MAX(SCALE_MIN, MIN(SCALE_MAX, scale));
+    [[NSUserDefaults standardUserDefaults] setDouble:scale forKey:@"timebox_window_scale"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    NSWindow *window = self.window;
+    if (!window) return;
+
+    NSSize contentSize = NSMakeSize(BASE_W * scale, BASE_H * scale);
+    NSRect frame = window.frame;
+    NSRect contentRect = [window contentRectForFrameRect:frame];
+    CGFloat dx = contentSize.width - contentRect.size.width;
+    CGFloat dy = contentSize.height - contentRect.size.height;
+    frame.size.width += dx;
+    frame.size.height += dy;
+    frame.origin.y -= dy;
+    NSString *task = [self.taskField.stringValue copy] ?: @"";
+    NSString *todo = self.todoTextView ? [self.todoTextView.string copy] : nil;
+    BOOL wasTodoOpen = self.todoOpen;
+
+    [window setFrame:frame display:YES animate:YES];
+    ApplyTitlebarScale(window, scale);
+
+    self.frame = NSMakeRect(0, 0, contentSize.width, contentSize.height);
+    self.bounds = NSMakeRect(0, 0, contentSize.width, contentSize.height);
+    for (NSView *subview in [self.subviews copy]) [subview removeFromSuperview];
+    self.timerField = nil;
+    self.blockField = nil;
+    self.intentField = nil;
+    self.taskField = nil;
+    self.punchBtn = nil;
+    self.pauseBtn = nil;
+    self.logTable = nil;
+    self.todoBtn = nil;
+    self.todoPanel = nil;
+    self.todoTextView = nil;
+    self.flashView = nil;
+    self.todoOpen = NO;
+
+    [self buildUI];
+    self.taskField.stringValue = task;
+    if (!self.running) [self.pauseBtn setTitle:@"▶ 继续"];
+    [self updateBlockText];
+    [self updateDisplay];
+    [self fieldChanged];
+    [self.logTable reloadData];
+    if (todo) [[NSUserDefaults standardUserDefaults] setObject:todo forKey:@"timebox_todo_text"];
+    if (wasTodoOpen) [self toggleTodo];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)scaleDown {
+    [self applyWindowScale:TimeBoxScale() - SCALE_STEP];
+}
+
+- (void)scaleReset {
+    [self applyWindowScale:1.0];
+}
+
+- (void)scaleUp {
+    [self applyWindowScale:TimeBoxScale() + SCALE_STEP];
+}
+
+- (void)showSettings:(id)sender {
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"TimeBox 设置"];
+    CGFloat scale = TimeBoxScale();
+
+    NSMenuItem *down = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"缩小一档  %.0f%%", MAX(SCALE_MIN, scale - SCALE_STEP) * 100]
+                                                    action:@selector(scaleDown)
+                                             keyEquivalent:@""];
+    down.target = self;
+    down.enabled = scale > SCALE_MIN;
+    [menu addItem:down];
+
+    NSMenuItem *reset = [[NSMenuItem alloc] initWithTitle:@"恢复正常  100%"
+                                                     action:@selector(scaleReset)
+                                              keyEquivalent:@""];
+    reset.target = self;
+    [menu addItem:reset];
+
+    NSMenuItem *up = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"放大一档  %.0f%%", MIN(SCALE_MAX, scale + SCALE_STEP) * 100]
+                                                  action:@selector(scaleUp)
+                                           keyEquivalent:@""];
+    up.target = self;
+    up.enabled = scale < SCALE_MAX;
+    [menu addItem:up];
+
+    [menu addItem:[NSMenuItem separatorItem]];
+
+    NSMenuItem *noteDir = [[NSMenuItem alloc] initWithTitle:@"设置笔记目录…"
+                                                       action:@selector(configureNoteDir)
+                                                keyEquivalent:@""];
+    noteDir.target = self;
+    [menu addItem:noteDir];
+
+    NSView *view = [sender isKindOfClass:[NSView class]] ? sender : self;
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, view.bounds.size.height) inView:view];
+}
+
 - (void)configureNoteDir {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     [panel setCanChooseFiles:NO];
@@ -505,17 +713,17 @@ static NSString *NotePath(void) {
     CGFloat W = self.bounds.size.width;
     if (self.todoOpen) {
         if (!self.todoPanel) {
-            self.todoPanel = [[NSView alloc] initWithFrame:NSMakeRect(16, 28, W-32, 128)];
+            self.todoPanel = [[NSView alloc] initWithFrame:NSMakeRect([self L:16], [self L:28], W-[self L:32], [self L:128])];
             self.todoPanel.wantsLayer = YES;
             self.todoPanel.layer.backgroundColor = C_CARD.CGColor;
-            self.todoPanel.layer.cornerRadius = 6;
+            self.todoPanel.layer.cornerRadius = [self L:6];
             self.todoPanel.layer.borderWidth = 0.5;
             self.todoPanel.layer.borderColor = C_BORDER.CGColor;
             [self addSubview:self.todoPanel];
 
-            NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(4, 4, W-40, 120)];
-            self.todoTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, W-44, 120)];
-            [self.todoTextView setFont:[NSFont systemFontOfSize:12]];
+            NSScrollView *sv = [[NSScrollView alloc] initWithFrame:NSMakeRect([self L:4], [self L:4], W-[self L:40], [self L:120])];
+            self.todoTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, W-[self L:44], [self L:120])];
+            [self.todoTextView setFont:[NSFont systemFontOfSize:[self L:12]]];
             [self.todoTextView setTextColor:C_TEXT];
             [self.todoTextView setBackgroundColor:[NSColor clearColor]];
             [self.todoTextView setDrawsBackground:NO];
@@ -640,13 +848,16 @@ static NSString *NotePath(void) {
     CGFloat sw = screen.visibleFrame.size.width;
     CGFloat sh = screen.visibleFrame.size.height;
 
-    NSRect rect = NSMakeRect(0, 0, 340, 380);
+    CGFloat scale = TimeBoxScale();
+    NSRect rect = NSMakeRect(0, 0, BASE_W * scale, BASE_H * scale);
     self.window = [[NSWindow alloc] initWithContentRect:rect
         styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|
                 NSWindowStyleMaskMiniaturizable
         backing:NSBackingStoreBuffered defer:NO];
 
     [self.window setTitle:@"TimeBox"];
+    [self.window setTitleVisibility:NSWindowTitleHidden];
+    [self.window setTitlebarAppearsTransparent:YES];
     [self.window setBackgroundColor:C_BG];
     [self.window setLevel:NSFloatingWindowLevel];
     [self.window setOpaque:YES];
@@ -655,8 +866,9 @@ static NSString *NotePath(void) {
     [self.window setRestorable:NO];
     [self.window center];
 
-    TimeBoxView *view = [[TimeBoxView alloc] initWithFrame:NSMakeRect(0, 0, 340, 380)];
+    TimeBoxView *view = [[TimeBoxView alloc] initWithFrame:NSMakeRect(0, 0, BASE_W * scale, BASE_H * scale)];
     [self.window setContentView:view];
+    ApplyTitlebarScale(self.window, scale);
 
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
